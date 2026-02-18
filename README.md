@@ -1,49 +1,45 @@
-# API Rate Limiter with Redis
+# Scalable Rate Limiter API
 
-A production-ready, Redis-based API rate limiting middleware for Python web applications. Supports both **FastAPI** and **Flask** frameworks with flexible configuration options.
+A high-performance, production-ready rate limiting solution built with FastAPI and Redis. Provides both global middleware-based and route-specific rate limiting with sliding window algorithm.
 
 ## Features
 
-✨ **Sliding Window Algorithm** - Accurate rate limiting using Redis sorted sets  
-🚀 **Framework Support** - Works with FastAPI and Flask  
-⚙️ **Flexible Configuration** - Environment variables or programmatic setup  
-🎯 **Multiple Strategies** - Global middleware or route-specific decorators  
-📊 **Rate Limit Headers** - Standard `X-RateLimit-*` headers in responses  
-🔧 **Customizable Identifiers** - Rate limit by IP, user ID, API key, or custom logic  
-💾 **Redis-Backed** - Distributed rate limiting across multiple servers  
+- **Redis-backed Rate Limiting**: Uses Redis for distributed, scalable rate limiting
+- **Sliding Window Algorithm**: Accurate rate limiting with smooth request distribution
+- **Global Middleware**: Apply rate limits to all endpoints globally
+- **Per-Route Limits**: Set custom limits for specific endpoints
+- **Proxy-aware**: Handles X-Forwarded-For and X-Real-IP headers
+- **HTTP Standards**: Returns proper 429 (Too Many Requests) responses with Retry-After headers
+- **Rate Limit Headers**: Includes X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset
+
+## Requirements
+
+- Python 3.8+
+- Redis server
+- FastAPI
+- Redis Python client
 
 ## Installation
 
-### 1. Clone or copy the project files
-
+1. **Clone the repository**
 ```bash
-# Install dependencies
+git clone https://github.com/yourusername/Scalable-Rate-limiter.git
+cd Scalable-Rate-limiter
+```
+
+2. **Create a virtual environment**
+```bash
+python -m venv env
+source env/bin/activate  # On Windows: env\Scripts\activate
+```
+
+3. **Install dependencies**
+```bash
 pip install -r requirements.txt
 ```
 
-### 2. Set up Redis
-
-Make sure you have Redis running locally or use a remote Redis instance:
-
-```bash
-# Using Docker
-docker run -d -p 6379:6379 redis:latest
-
-# Or install Redis locally
-# Windows: https://redis.io/docs/getting-started/installation/install-redis-on-windows/
-# Linux: sudo apt-get install redis-server
-# macOS: brew install redis
-```
-
-### 3. Configure environment variables
-
-Copy `.env.example` to `.env` and update values:
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env`:
+4. **Configure environment variables** (optional)
+Create a `.env` file in the root directory:
 ```env
 REDIS_HOST=localhost
 REDIS_PORT=6379
@@ -53,268 +49,134 @@ RATE_LIMIT_REQUESTS=100
 RATE_LIMIT_WINDOW=60
 ```
 
-## Usage
+## Running the Application
 
-### FastAPI Example
+Start the FastAPI server:
+```bash
+python app.py
+```
 
-#### Global Middleware (All Routes)
+The API will be available at `http://localhost:8000`
+API documentation: `http://localhost:8000/docs`
 
+## API Endpoints
+
+### Global Rate Limited (50 requests/min)
+
+- `GET /` - Welcome message
+- `GET /api/public` - Public endpoint
+- `GET /api/user/{user_id}` - User data endpoint
+- `GET /health` - Health check with Redis status
+
+### Strict Rate Limited (10 requests/min)
+
+- `GET /api/strict` - Demonstrates route-specific rate limiting
+
+## Configuration
+
+### Global Rate Limiting
+The middleware applies a global rate limit to all requests:
 ```python
-from fastapi import FastAPI
-from middleware_fastapi import RateLimitMiddleware
-from config import RateLimiterConfig
-
-app = FastAPI()
-
-# Apply rate limiting to all routes
 app.add_middleware(
     RateLimitMiddleware,
-    config=RateLimiterConfig(),
-    max_requests=100,  # 100 requests
-    window_seconds=60   # per 60 seconds
-)
-
-@app.get("/api/endpoint")
-async def endpoint():
-    return {"message": "Success"}
-```
-
-#### Route-Specific Rate Limiting
-
-```python
-from fastapi import FastAPI, Depends
-from middleware_fastapi import rate_limit_dependency
-from rate_limiter import RateLimiter
-from config import RateLimiterConfig
-
-app = FastAPI()
-rate_limiter = RateLimiter(RateLimiterConfig())
-
-@app.get(
-    "/api/strict",
-    dependencies=[Depends(rate_limit_dependency(
-        rate_limiter,
-        max_requests=10,
-        window_seconds=60
-    ))]
-)
-async def strict_endpoint():
-    return {"message": "Limited to 10 requests per minute"}
-```
-
-#### Run FastAPI Example
-
-```bash
-python example_fastapi.py
-# Visit http://localhost:8000/docs
-```
-
-### Flask Example
-
-#### Decorator-Based Rate Limiting
-
-```python
-from flask import Flask
-from middleware_flask import FlaskRateLimiter
-from config import RateLimiterConfig
-
-app = Flask(__name__)
-rate_limiter = FlaskRateLimiter(app, RateLimiterConfig())
-
-@app.route("/api/endpoint")
-@rate_limiter.limit(max_requests=100, window_seconds=60)
-def endpoint():
-    return {"message": "Success"}
-```
-
-#### Global Middleware
-
-```python
-from flask import Flask
-from middleware_flask import create_rate_limit_middleware
-from config import RateLimiterConfig
-
-app = Flask(__name__)
-
-# Apply to all routes
-create_rate_limit_middleware(
-    app,
-    config=RateLimiterConfig(),
-    max_requests=100,
+    config=config,
+    max_requests=50,
     window_seconds=60
 )
 ```
 
-#### Run Flask Example
-
-```bash
-python example_flask.py
-# Visit http://localhost:5000
+### Per-Route Rate Limiting
+Apply custom limits to specific routes:
+```python
+@app.get(
+    "/api/endpoint",
+    dependencies=[Depends(rate_limit_dependency(
+        rate_limiter, 
+        max_requests=10, 
+        window_seconds=60
+    ))]
+)
+async def my_endpoint():
+    return {"message": "Limited to 10 requests per minute"}
 ```
 
-## Advanced Configuration
-
 ### Custom Identifier Function
-
-Rate limit by user ID, API key, or custom logic:
-
+By default, rate limiting uses client IP. Customize with:
 ```python
-# FastAPI
 def get_user_id(request: Request) -> str:
     return request.headers.get("X-User-ID", "anonymous")
 
 app.add_middleware(
     RateLimitMiddleware,
+    config=config,
     identifier_func=get_user_id,
     max_requests=100,
     window_seconds=60
 )
-
-# Flask
-def get_user_id() -> str:
-    return request.headers.get("X-User-ID", "anonymous")
-
-rate_limiter = FlaskRateLimiter(
-    app,
-    identifier_func=get_user_id
-)
 ```
 
-### Programmatic Configuration
+## Rate Limit Headers
 
-```python
-from config import RateLimiterConfig
-
-config = RateLimiterConfig(
-    redis_host="redis.example.com",
-    redis_port=6380,
-    redis_password="secret",
-    default_requests=200,
-    default_window=120
-)
+Successful requests include:
+```
+X-RateLimit-Limit: 50
+X-RateLimit-Remaining: 42
+X-RateLimit-Reset: 1708265440
 ```
 
-### Direct Rate Limiter Usage
-
-```python
-from rate_limiter import RateLimiter
-from config import RateLimiterConfig
-
-limiter = RateLimiter(RateLimiterConfig())
-
-# Check if request is allowed
-is_allowed, metadata = limiter.is_allowed(
-    identifier="user_123",
-    max_requests=10,
-    window_seconds=60
-)
-
-if is_allowed:
-    print(f"Request allowed. Remaining: {metadata['remaining']}")
-else:
-    print(f"Rate limit exceeded. Reset at: {metadata['reset']}")
-
-# Get current usage
-usage = limiter.get_usage("user_123", window_seconds=60)
-print(f"Current usage: {usage}")
-
-# Reset rate limit for a user
-limiter.reset("user_123")
+Rate-limited responses (429):
 ```
-
-## Response Headers
-
-The middleware automatically adds standard rate limit headers:
-
-```
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 95
-X-RateLimit-Reset: 1738515600
-```
-
-When rate limit is exceeded (429 response):
-
-```
-X-RateLimit-Limit: 100
+X-RateLimit-Limit: 50
 X-RateLimit-Remaining: 0
-X-RateLimit-Reset: 1738515600
-Retry-After: 45
+X-RateLimit-Reset: 1708265440
+Retry-After: 60
 ```
 
-## Error Response Format
+## Architecture
 
-```json
-{
-  "error": "Rate limit exceeded",
-  "message": "Too many requests. Please try again later.",
-  "limit": 100,
-  "reset": 1738515600,
-  "retry_after": 45
-}
-```
+### RateLimiterConfig
+Manages Redis connection configuration and default limits.
 
-## Project Structure
+### RateLimiter
+Core sliding window rate limiter:
+- `is_allowed()` - Check if request is allowed
+- `reset()` - Reset limits for an identifier
+- `get_usage()` - Check current usage count
 
-```
-.
-├── config.py                 # Configuration management
-├── rate_limiter.py          # Core rate limiter logic
-├── middleware_fastapi.py    # FastAPI middleware
-├── middleware_flask.py      # Flask middleware
-├── example_fastapi.py       # FastAPI example app
-├── example_flask.py         # Flask example app
-├── requirements.txt         # Python dependencies
-├── .env.example            # Environment template
-└── README.md               # This file
-```
+### RateLimitMiddleware
+FastAPI middleware for global rate limiting on all routes.
 
-## How It Works
+### rate_limit_dependency
+FastAPI dependency for per-route rate limiting.
 
-The rate limiter uses Redis **sorted sets** with a **sliding window** algorithm:
+## Performance
 
-1. Each request adds a timestamp to a Redis sorted set
-2. Old timestamps outside the window are removed
-3. Current request count is checked against the limit
-4. If allowed, the request proceeds; otherwise, returns 429
-
-This approach provides:
-- **Accurate rate limiting** (no bucket edge cases)
-- **Distributed support** (works across multiple servers)
-- **Automatic cleanup** (Redis TTL removes old data)
+- **Atomic Operations**: Uses Redis pipelines for atomic rate limit checks
+- **Distributed**: Works with multiple FastAPI instances
+- **Low Latency**: Minimal overhead per request
+- **Scalable**: Handles thousands of concurrent clients
 
 ## Testing
 
-Test the rate limiter with curl:
-
 ```bash
-# Test FastAPI endpoint
-for i in {1..15}; do
-  curl -i http://localhost:8000/api/strict
-  echo "Request $i"
-done
+# Test with curl
+curl http://localhost:8000/api/public
 
-# Test Flask endpoint
-for i in {1..15}; do
-  curl -i http://localhost:5000/api/strict
-  echo "Request $i"
-done
+# Test rate limiting (send 51+ requests rapidly)
+for i in {1..60}; do curl http://localhost:8000/api/public; done
 ```
 
-You should see successful responses until the limit is reached, then 429 errors.
+## Development
 
-## Production Considerations
-
-1. **Redis Persistence** - Configure Redis with AOF or RDB for data persistence
-2. **Redis Clustering** - Use Redis Cluster for high availability
-3. **Connection Pooling** - The redis-py client handles this automatically
-4. **Monitoring** - Track rate limit metrics in your observability platform
-5. **Whitelist/Blacklist** - Add IP whitelisting for trusted clients
-6. **Different Limits** - Set different limits for authenticated vs anonymous users
+To run tests:
+```bash
+pytest test_request_strict.py
+```
 
 ## License
 
-MIT License - feel free to use in your projects!
+MIT
 
-## Contributing
+## Support
 
-Contributions welcome! Feel free to submit issues or pull requests.
+For issues, questions, or contributions, please open an issue or pull request on GitHub.
