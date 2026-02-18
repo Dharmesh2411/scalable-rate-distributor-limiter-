@@ -45,7 +45,7 @@ REDIS_HOST=localhost
 REDIS_PORT=6379
 REDIS_DB=0
 REDIS_PASSWORD=
-RATE_LIMIT_REQUESTS=50
+RATE_LIMIT_REQUESTS=100
 RATE_LIMIT_WINDOW=60
 ```
 
@@ -61,7 +61,7 @@ API documentation: `http://localhost:8000/docs`
 
 ## API Endpoints
 
-### Global Rate Limited (50 requests/min)
+### Global Rate Limited (100 requests/min)
 
 - `GET /` - Welcome message
 - `GET /api/public` - Public endpoint
@@ -80,7 +80,7 @@ The middleware applies a global rate limit to all requests:
 app.add_middleware(
     RateLimitMiddleware,
     config=config,
-    max_requests=50,
+    max_requests=100,
     window_seconds=60
 )
 ```
